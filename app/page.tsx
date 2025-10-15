@@ -1,381 +1,336 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { Plus, Check } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Progress } from "@/components/ui/progress";
+import { Plus, CheckCircle2, ClipboardCheck, Wrench, Workflow, FileDown } from "lucide-react";
+import jsPDF from "jspdf";
+import html2canvas from "html2canvas";
 
-// Define the structure for a single task
-interface Task {
+const PBE_GREEN = "#00a651";
+
+type Part = { id: string; name: string; qty?: string };
+type Item = {
   id: string;
-  description: string;
-  note: string;
-  technicianName: string;
-  checkedByName: string;
-  done: boolean;
-  verified: boolean;
-  parts: string[];
-  newPart: string;
-}
+  title: string;
+  notes?: string;
+  techDone: boolean;
+  siteVerified: boolean;
+  parts: Part[];
+  techName?: string;
+  siteChecker?: string;
+};
+type SubAssetKey = "CSS092" | "CSS068" | "CSS023";
+type SubAsset = { id: SubAssetKey; name: string; items: Item[] };
 
-// Initial tasks for each sub
-const initialSubs: Record<string, Task[]> = {
-  CSS092: [
-    {
-      id: 't1',
-      description: 'Sleeve damaged LV cables from transformer to LV board',
-      note: '',
-      technicianName: '',
-      checkedByName: '',
-      done: false,
-      verified: false,
-      parts: [],
-      newPart: '',
-    },
-    {
-      id: 't2',
-      description: 'Fan cable needs to be installed back into the fan motor',
-      note: '',
-      technicianName: '',
-      checkedByName: '',
-      done: false,
-      verified: false,
-      parts: [],
-      newPart: '',
-    },
-    {
-      id: 't3',
-      description: 'Busbar needs extra screws to hold any loose plates in place',
-      note: '',
-      technicianName: '',
-      checkedByName: '',
-      done: false,
-      verified: false,
-      parts: [],
-      newPart: '',
-    },
-    {
-      id: 't4',
-      description: 'General clean up of the area',
-      note: '',
-      technicianName: '',
-      checkedByName: '',
-      done: false,
-      verified: false,
-      parts: [],
-      newPart: '',
-    },
-  ],
-  CSS068: [
-    {
-      id: 't1',
-      description: 'Repair control cables',
-      note: '',
-      technicianName: '',
-      checkedByName: '',
-      done: false,
-      verified: false,
-      parts: [],
-      newPart: '',
-    },
-    {
-      id: 't2',
-      description: 'Repair broken trunking',
-      note: '',
-      technicianName: '',
-      checkedByName: '',
-      done: false,
-      verified: false,
-      parts: [],
-      newPart: '',
-    },
-    {
-      id: 't3',
-      description: 'Replace hinges in the ABB area',
-      note: '',
-      technicianName: '',
-      checkedByName: '',
-      done: false,
-      verified: false,
-      parts: [],
-      newPart: '',
-    },
-    {
-      id: 't4',
-      description: 'General clean up',
-      note: '',
-      technicianName: '',
-      checkedByName: '',
-      done: false,
-      verified: false,
-      parts: [],
-      newPart: '',
-    },
-  ],
-  CSS023: [
-    {
-      id: 't1',
-      description: 'Re-install light and fix conduit',
-      note: '',
-      technicianName: '',
-      checkedByName: '',
-      done: false,
-      verified: false,
-      parts: [],
-      newPart: '',
-    },
-    {
-      id: 't2',
-      description: 'General clean up',
-      note: '',
-      technicianName: '',
-      checkedByName: '',
-      done: false,
-      verified: false,
-      parts: [],
-      newPart: '',
-    },
-  ],
+const seed: Record<SubAssetKey, Omit<SubAsset, "id">> = {
+  CSS092: {
+    name: "Sub #1 – CSS092",
+    items: [
+      { id: "i1", title: "Sleeve damaged LV cables from transformer to LV board", techDone: false, siteVerified: false, parts: [] },
+      { id: "i2", title: "Install/secure all cable glands to backing plates", techDone: false, siteVerified: false, parts: [] },
+      { id: "i3", title: "Re-terminate fan cable into fan motor", techDone: false, siteVerified: false, parts: [] },
+      { id: "i4", title: "Busbar – add screws to secure any loose plates", techDone: false, siteVerified: false, parts: [] },
+      { id: "i5", title: "General clean-up of area", techDone: false, siteVerified: false, parts: [] },
+    ],
+  },
+  CSS068: {
+    name: "Sub #2 – CSS068",
+    items: [
+      { id: "i1", title: "Repair damaged control cables", techDone: false, siteVerified: false, parts: [] },
+      { id: "i2", title: "Repair/replace broken trunking", techDone: false, siteVerified: false, parts: [] },
+      { id: "i3", title: "Replace hinges in ABB section", techDone: false, siteVerified: false, parts: [] },
+      { id: "i4", title: "General clean-up of area", techDone: false, siteVerified: false, parts: [] },
+    ],
+  },
+  CSS023: {
+    name: "Sub #3 – CSS023",
+    items: [
+      { id: "i1", title: "Reinstall internal light", techDone: false, siteVerified: false, parts: [] },
+      { id: "i2", title: "Fix/secure conduit for light", techDone: false, siteVerified: false, parts: [] },
+      { id: "i3", title: "General clean-up of area", techDone: false, siteVerified: false, parts: [] },
+    ],
+  },
 };
 
-export default function App() {
-  // Active tab (sub)
-  const [active, setActive] = useState<string>('CSS092');
-  // State of subs and tasks
-  const [subs, setSubs] = useState<Record<string, Task[]>>(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('pbe-sub-repair-v1');
-      if (saved) {
-        try {
-          return JSON.parse(saved);
-        } catch (e) {
-          console.error('Failed to parse saved state', e);
-        }
-      }
+const uid = () => Math.random().toString(36).slice(2, 9);
+const STORAGE_KEY = "pbe-sub-repair-app-v4";
+
+function loadState() {
+  try {
+    const raw = typeof window !== "undefined" ? localStorage.getItem(STORAGE_KEY) : null;
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+function saveState(state: Record<SubAssetKey, SubAsset>) {
+  try {
+    if (typeof window !== "undefined") {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     }
-    return initialSubs;
+  } catch {}
+}
+
+function subProgress(sub: SubAsset) {
+  const total = sub.items.length;
+  const done = sub.items.filter((i) => i.techDone && i.siteVerified).length;
+  return total ? Math.round((done / total) * 100) : 0;
+}
+
+const App: React.FC = () => {
+  const [siteName] = useState("T2D Precast Facility");
+  const [dateStr, setDateStr] = useState(() => new Date().toLocaleString());
+  const [subs, setSubs] = useState<Record<SubAssetKey, SubAsset>>(() => {
+    const loaded = loadState();
+    if (loaded) return loaded;
+    return {
+      CSS092: { id: "CSS092", ...seed.CSS092 },
+      CSS068: { id: "CSS068", ...seed.CSS068 },
+      CSS023: { id: "CSS023", ...seed.CSS023 },
+    };
   });
 
-  // Persist to localStorage
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('pbe-sub-repair-v1', JSON.stringify(subs));
-    }
+    saveState(subs);
   }, [subs]);
 
-  // Helper to compute progress
-  const computeProgress = (tasks: Task[]) => {
-    const total = tasks.length * 2; // mark done + verify
-    const doneCount = tasks.reduce((acc, t) => acc + (t.done ? 1 : 0) + (t.verified ? 1 : 0), 0);
-    return total === 0 ? 0 : Math.round((doneCount / total) * 100);
-  };
+  const containerRef = useRef<HTMLDivElement>(null);
 
-  // Add a new task
-  const addTask = (subKey: string) => {
-    const newTask: Task = {
-      id: 'task-' + Date.now().toString(),
-      description: '',
-      note: '',
-      technicianName: '',
-      checkedByName: '',
-      done: false,
-      verified: false,
-      parts: [],
-      newPart: '',
-    };
-    setSubs((prev) => ({ ...prev, [subKey]: [...prev[subKey], newTask] }));
-  };
-
-  // Update any field in a task
-  const updateTaskField = (subKey: string, taskId: string, field: keyof Task, value: any) => {
-    setSubs((prev) => {
-      const updatedTasks = prev[subKey].map((task) => (task.id === taskId ? { ...task, [field]: value } : task));
-      return { ...prev, [subKey]: updatedTasks };
-    });
-  };
-
-  // Mark done
-  const markDone = (subKey: string, taskId: string) => {
-    setSubs((prev) => {
-      const updated = prev[subKey].map((t) =>
-        t.id === taskId ? { ...t, done: !t.done, verified: t.done ? false : t.verified } : t
-      );
-      return { ...prev, [subKey]: updated };
-    });
-  };
-
-  // Verify
-  const verifyTask = (subKey: string, taskId: string) => {
-    setSubs((prev) => {
-      const updated = prev[subKey].map((t) => (t.id === taskId ? { ...t, verified: !t.verified } : t));
-      return { ...prev, [subKey]: updated };
-    });
-  };
-
-  // Add part
-  const addPartToTask = (subKey: string, taskId: string) => {
-    setSubs((prev) => {
-      const updated = prev[subKey].map((t) => {
-        if (t.id === taskId && t.newPart.trim()) {
-          return { ...t, parts: [...t.parts, t.newPart.trim()], newPart: '' };
-        }
-        return t;
+  const updateItem = useCallback(
+    (which: SubAssetKey, id: string, patch: Partial<Item>) => {
+      setSubs((prev) => {
+        const copy = { ...prev };
+        copy[which] = {
+          ...copy[which],
+          items: copy[which].items.map((i) => (i.id === id ? { ...i, ...patch } : i)),
+        };
+        return copy;
       });
-      return { ...prev, [subKey]: updated };
-    });
-  };
+    },
+    [],
+  );
 
-  // Remove part
-  const removePart = (subKey: string, taskId: string, index: number) => {
-    setSubs((prev) => {
-      const updated = prev[subKey].map((t) => {
-        if (t.id === taskId) {
-          const parts = [...t.parts];
-          parts.splice(index, 1);
-          return { ...t, parts };
-        }
-        return t;
+  const addItem = useCallback(
+    (which: SubAssetKey) => {
+      setSubs((prev) => {
+        const copy = { ...prev };
+        copy[which].items.push({
+          id: uid(),
+          title: "New item – describe work required",
+          techDone: false,
+          siteVerified: false,
+          parts: [],
+        });
+        return copy;
       });
-      return { ...prev, [subKey]: updated };
-    });
-  };
+    },
+    [],
+  );
 
-  const tasks = subs[active];
-  const progress = computeProgress(tasks);
+  const overallPct = useMemo(() => {
+    const subsArray = Object.values(subs);
+    const avg = subsArray.reduce((acc, s) => acc + subProgress(s), 0) / subsArray.length;
+    return Math.round(avg);
+  }, [subs]);
+
+  const allComplete = useMemo(() => {
+    const everySubComplete = Object.values(subs).every((s) =>
+      s.items.every((i) => i.techDone && i.siteVerified),
+    );
+    return everySubComplete;
+  }, [subs]);
+
+  const exportPDF = useCallback(async () => {
+    if (!containerRef.current) return;
+    setDateStr(new Date().toLocaleString());
+    const node = containerRef.current;
+    const canvas = await html2canvas(node, { scale: 2, backgroundColor: "#ffffff" });
+    const imgData = canvas.toDataURL("image/png");
+    const pdf = new jsPDF({ orientation: "p", unit: "pt", format: "a4" });
+    const pageWidth = pdf.internal.pageSize.getWidth();
+    const pageHeight = pdf.internal.pageSize.getHeight();
+    const margin = 18;
+    const imgWidth = pageWidth - margin * 2;
+    const imgHeight = (canvas.height * imgWidth) / canvas.width;
+    if (imgHeight <= pageHeight - margin * 2) {
+      pdf.addImage(imgData, "PNG", margin, margin, imgWidth, imgHeight);
+    } else {
+      let sY = 0;
+      const ratio = imgWidth / canvas.width;
+      const usableHeight = pageHeight - margin * 2;
+      const pageCanvas = document.createElement("canvas");
+      const pageCtx = pageCanvas.getContext("2d");
+      pageCanvas.width = canvas.width;
+      pageCanvas.height = Math.floor(usableHeight / ratio);
+      while (sY < canvas.height) {
+        const sliceHeight = Math.min(pageCanvas.height, canvas.height - sY);
+        pageCtx!.clearRect(0, 0, pageCanvas.width, pageCanvas.height);
+        pageCtx!.drawImage(
+          canvas,
+          0,
+          sY,
+          canvas.width,
+          sliceHeight,
+          0,
+          0,
+          pageCanvas.width,
+          sliceHeight,
+        );
+        const sliceData = pageCanvas.toDataURL("image/png");
+        if (sY > 0) pdf.addPage();
+        pdf.addImage(sliceData, "PNG", margin, margin, imgWidth, (sliceHeight * imgWidth) / canvas.width);
+        sY += sliceHeight;
+      }
+    }
+    pdf.save(`PBE-Sub-Repair-${new Date().toISOString().slice(0, 10)}.pdf`);
+  }, []);
 
   return (
-    <main className="min-h-screen bg-gray-50 p-4 md:p-8">
-      <h1 className="text-2xl md:text-3xl font-bold mb-2">PBE Sub Repair &amp; Verification</h1>
-      <p className="text-sm text-gray-600 mb-4">Site: T2D Precast Facility</p>
-      {/* Tabs */}
-      <div className="flex flex-wrap gap-2 mb-4">
-        {Object.keys(subs).map((key) => (
-          <button
-            key={key}
-            onClick={() => setActive(key)}
-            className={`px-4 py-2 rounded-full text-sm font-medium ${
-              active === key ? 'bg-green-600 text-white' : 'bg-gray-200 text-gray-700'
-            }`}
-          >
-            {key}
-          </button>
-        ))}
-      </div>
-      {/* Progress bar */}
-      <div className="w-full h-3 bg-gray-200 rounded-full mb-6 overflow-hidden">
-        <div
-          className="h-full bg-green-600 transition-all"
-          style={{ width: `${progress}%` }}
-        ></div>
-      </div>
-      {/* Task list */}
-      <div className="space-y-6">
-        {tasks.map((task) => (
-          <div key={task.id} className="bg-white border rounded-xl shadow-sm p-4 space-y-4">
-            <div>
-              <label className="block text-sm font-medium mb-1">Task Description</label>
-              <input
-                type="text"
-                value={task.description}
-                onChange={(e) => updateTaskField(active, task.id, 'description', e.target.value)}
-                placeholder="Enter description for this task"
-                className="w-full border rounded-md p-2 text-sm"
-              />
+    <div className="min-h-screen bg-gradient-to-b from-white to-gray-100">
+      <div className="max-w-7xl mx-auto px-4 py-6" ref={containerRef}>
+        <div className="flex items-center justify-between bg-white rounded-2xl p-4 shadow mb-6 border border-zinc-200">
+          <div className="flex items-center gap-4">
+            <div className="h-12 w-12 rounded-xl flex items-center justify-center" style={{ backgroundColor: PBE_GREEN }}>
+              <span className="text-white font-bold">PBE</span>
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">Notes / anomaly details</label>
-              <textarea
-                value={task.note}
-                onChange={(e) => updateTaskField(active, task.id, 'note', e.target.value)}
-                placeholder="Enter notes (optional)"
-                className="w-full border rounded-md p-2 text-sm min-h-[80px]"
-              />
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Technician section */}
-              <div>
-                <label className="block text-xs font-medium mb-1">Technician Name (for this task)</label>
-                <input
-                  type="text"
-                  value={task.technicianName}
-                  onChange={(e) => updateTaskField(active, task.id, 'technicianName', e.target.value)}
-                  placeholder="Type full name of person who completed work"
-                  className="w-full border rounded-md p-2 text-sm mb-2"
-                />
-                <button
-                  onClick={() => markDone(active, task.id)}
-                  disabled={!task.technicianName.trim()}
-                  className={`w-full px-3 py-2 rounded-md text-sm font-medium ${
-                    task.done ? 'bg-green-600 text-white' : 'bg-red-600 text-white'
-                  } disabled:bg-gray-200 disabled:text-gray-400`}
-                >
-                  {task.done ? 'Marked Done' : 'Mark Done'}
-                </button>
-              </div>
-              {/* Site verification section */}
-              <div>
-                <label className="block text-xs font-medium mb-1">Checked by (site verification)</label>
-                <input
-                  type="text"
-                  value={task.checkedByName}
-                  onChange={(e) => updateTaskField(active, task.id, 'checkedByName', e.target.value)}
-                  placeholder="Type full name of verifier"
-                  className="w-full border rounded-md p-2 text-sm mb-2"
-                />
-                <button
-                  onClick={() => verifyTask(active, task.id)}
-                  disabled={!task.done || !task.checkedByName.trim()}
-                  className={`w-full px-3 py-2 rounded-md text-sm font-medium ${
-                    task.verified ? 'bg-green-600 text-white' : 'bg-gray-200 text-gray-500'
-                  } disabled:bg-gray-200 disabled:text-gray-400`}
-                >
-                  {task.verified ? 'Verified' : 'Verify (after Tech)'}
-                </button>
-              </div>
-            </div>
-            {/* Parts section */}
-            <div className="pt-3 border-t">
-              <div className="text-sm font-medium mb-1">Parts Needed</div>
-              {task.parts.length === 0 && (
-                <div className="text-sm text-gray-500 mb-2">No parts added</div>
-              )}
-              {task.parts.map((part, idx) => (
-                <div key={idx} className="flex items-center text-sm mb-1">
-                  <span className="flex-1">{part}</span>
-                  <button
-                    onClick={() => removePart(active, task.id, idx)}
-                    className="ml-2 text-xs text-red-500 hover:underline"
-                  >
-                    Remove
-                  </button>
-                </div>
-              ))}
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={task.newPart}
-                  onChange={(e) => updateTaskField(active, task.id, 'newPart', e.target.value)}
-                  placeholder="Add part"
-                  className="flex-1 border rounded-md p-2 text-sm"
-                />
-                <button
-                  onClick={() => addPartToTask(active, task.id)}
-                  disabled={!task.newPart.trim()}
-                  className="px-3 py-2 rounded-md text-sm font-medium bg-blue-600 text-white disabled:bg-gray-200 disabled:text-gray-400"
-                >
-                  Add
-                </button>
-              </div>
+              <div className="text-sm text-zinc-500">Sub Damage Rectification</div>
+              <div className="text-xl font-semibold text-zinc-800">Technician Checklist & Site Verification</div>
+              <div className="text-[11px] text-zinc-500">Site: {siteName} • {dateStr}</div>
             </div>
           </div>
-        ))}
+          <div className="flex items-center gap-2">
+            <Button
+              onClick={exportPDF}
+              disabled={!allComplete}
+              className={`rounded-xl ${allComplete ? "bg-green-600 hover:bg-green-700" : "bg-gray-200 text-gray-500"}`}
+              title={allComplete ? "Export completed report as PDF" : "Complete all items (Tech + Verify) to enable PDF"}
+            >
+              <FileDown className="mr-2 h-4 w-4" /> Export PDF
+            </Button>
+          </div>
+        </div>
+        <Card className="mb-6 border-zinc-200">
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-zinc-700">
+                <Workflow className="h-5 w-5" />
+                <span className="text-sm">Overall Project Completion</span>
+              </div>
+              <div className="flex items-center gap-3 bg-white rounded-xl px-3 py-2 border border-zinc-200">
+                <div className="text-xs text-zinc-600">{overallPct}%</div>
+                <Progress value={overallPct} className="w-52" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Tabs defaultValue="CSS092">
+          <TabsList className="bg-white text-zinc-700 mb-4 border border-zinc-200 rounded-xl">
+            <TabsTrigger value="CSS092">CSS092</TabsTrigger>
+            <TabsTrigger value="CSS068">CSS068</TabsTrigger>
+            <TabsTrigger value="CSS023">CSS023</TabsTrigger>
+          </TabsList>
+          {(["CSS092", "CSS068", "CSS023"] as SubAssetKey[]).map((key) => {
+            const sub = subs[key];
+            const pct = subProgress(sub);
+            return (
+              <TabsContent value={key} key={key}>
+                <Card className="shadow border-zinc-200">
+                  <CardHeader className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                    <div>
+                      <CardTitle>{sub.name}</CardTitle>
+                      <div className="text-xs text-zinc-500">
+                        Mark items as completed, then request Site Verification for each before final sign-off.
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3 bg-white rounded-xl px-3 py-2 border border-zinc-200">
+                      <div className="text-xs text-zinc-600">{pct}%</div>
+                      <Progress value={pct} className="w-40" />
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    {sub.items.map((it) => (
+                      <div
+                        key={it.id}
+                        className={`grid grid-cols-12 gap-4 p-4 rounded-xl border ${
+                          it.techDone && it.siteVerified ? "border-green-500 bg-green-50" : "border-zinc-200 bg-white"
+                        }`}
+                      >
+                        <div className="col-span-12 lg:col-span-6">
+                          <div className="text-sm font-medium flex items-center gap-2">
+                            <Wrench className="h-4 w-4" /> {it.title}
+                          </div>
+                          <Textarea
+                            className="mt-2"
+                            placeholder="Notes / anomaly details"
+                            value={it.notes || ""}
+                            onChange={(e) => updateItem(key, it.id, { notes: e.target.value })}
+                          />
+                        </div>
+                        <div className="col-span-12 lg:col-span-3 flex flex-col gap-2">
+                          <div className="text-xs font-medium">Technician action</div>
+                          <Button
+                            onClick={() => updateItem(key, it.id, { techDone: !it.techDone })}
+                            className={`w-full ${
+                              it.techDone ? "bg-green-600 hover:bg-green-700" : "bg-red-600 hover:bg-red-700 text-white"
+                            }`}
+                          >
+                            {it.techDone ? <CheckCircle2 className="mr-2 h-4 w-4" /> : <ClipboardCheck className="mr-2 h-4 w-4" />}
+                            {it.techDone ? "Marked Done" : "Mark Done"}
+                          </Button>
+                          <label className="text-xs text-zinc-500">Technician Name</label>
+                          <Input
+                            value={it.techName || ""}
+                            onChange={(e) => updateItem(key, it.id, { techName: e.target.value })}
+                            placeholder="Type full name of person who completed work"
+                          />
+                        </div>
+                        <div className="col-span-12 lg:col-span-3 flex flex-col gap-2">
+                          <div className="text-xs font-medium">Site verification</div>
+                          <Button
+                            onClick={() => updateItem(key, it.id, { siteVerified: !it.siteVerified })}
+                            disabled={!it.techDone}
+                            className={`w-full ${
+                              it.siteVerified
+                                ? "bg-green-600 text-white hover:bg-green-700"
+                                : "bg-white border border-red-300 text-red-700 hover:bg-red-50"
+                            }`}
+                          >
+                            {it.siteVerified ? "Verified" : "Verify (after Tech)"}
+                          </Button>
+                          <label className="text-xs text-zinc-500">Checked By (Site)</label>
+                          <Input
+                            value={it.siteChecker || ""}
+                            onChange={(e) => updateItem(key, it.id, { siteChecker: e.target.value })}
+                            placeholder="Type full name of site verifier"
+                          />
+                        </div>
+                      </div>
+                    ))}
+                    <div className="mt-4">
+                      <Button onClick={() => addItem(key)} variant="outline" className="rounded-xl">
+                        <Plus className="h-4 w-4 mr-1" /> Add New Item
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+            );
+          })}
+        </Tabs>
+        <div className="mt-8 text-center text-xs text-zinc-400">
+          © {new Date().getFullYear()} Pyott Boone Electronics – Sub Repair & Verification • CSS092 • CSS068 • CSS023
+        </div>
       </div>
-      <div className="mt-6">
-        <button
-          onClick={() => addTask(active)}
-          className="px-4 py-2 border rounded-md text-sm font-medium bg-gray-100 hover:bg-gray-200"
-        >
-          Add New Item
-        </button>
-      </div>
-    </main>
+    </div>
   );
-}
+};
+
+export default App;
