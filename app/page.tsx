@@ -211,9 +211,9 @@ const App: React.FC = () => {
               onClick={exportPDF}
               disabled={!allComplete}
               className={`rounded-xl ${allComplete ? "bg-green-600 hover:bg-green-700" : "bg-gray-200 text-gray-500"}`}
-              title={allComplete ? "Export completed report as PDF" : "Complete all items (Tech + Verify) to enable PDF"}
+              title={allComplete ? "Send completed report as PDF" : "Complete all items (Tech + Verify) to enable PDF"}
             >
-              <FileDown className="mr-2 h-4 w-4" /> Export PDF
+              <FileDown className="mr-2 h-4 w-4" /> Send PDF Report
             </Button>
           </div>
         </div>
