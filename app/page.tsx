@@ -1,3 +1,4 @@
+// NOTE: This file is auto-generated from the latest Canva design.
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -62,19 +63,16 @@ const STORAGE_KEY = "pbe-sub-repair-app-v4";
 
 function loadState() {
   try {
-    const raw = typeof window !== "undefined" ? localStorage.getItem(STORAGE_KEY) : null;
+    const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return null;
     return JSON.parse(raw);
   } catch {
     return null;
   }
 }
-
 function saveState(state: Record<SubAssetKey, SubAsset>) {
   try {
-    if (typeof window !== "undefined") {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-    }
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   } catch {}
 }
 
@@ -96,43 +94,27 @@ const App: React.FC = () => {
       CSS023: { id: "CSS023", ...seed.CSS023 },
     };
   });
-
   useEffect(() => {
     saveState(subs);
   }, [subs]);
 
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const updateItem = useCallback(
-    (which: SubAssetKey, id: string, patch: Partial<Item>) => {
-      setSubs((prev) => {
-        const copy = { ...prev };
-        copy[which] = {
-          ...copy[which],
-          items: copy[which].items.map((i) => (i.id === id ? { ...i, ...patch } : i)),
-        };
-        return copy;
-      });
-    },
-    [],
-  );
+  const updateItem = useCallback((which: SubAssetKey, id: string, patch: Partial<Item>) => {
+    setSubs((prev) => {
+      const copy = { ...prev };
+      copy[which] = { ...copy[which], items: copy[which].items.map((i) => (i.id === id ? { ...i, ...patch } : i)) };
+      return copy;
+    });
+  }, []);
 
-  const addItem = useCallback(
-    (which: SubAssetKey) => {
-      setSubs((prev) => {
-        const copy = { ...prev };
-        copy[which].items.push({
-          id: uid(),
-          title: "New item – describe work required",
-          techDone: false,
-          siteVerified: false,
-          parts: [],
-        });
-        return copy;
-      });
-    },
-    [],
-  );
+  const addItem = useCallback((which: SubAssetKey) => {
+    setSubs((prev) => {
+      const copy = { ...prev };
+      copy[which].items.push({ id: uid(), title: "New item – describe work required", techDone: false, siteVerified: false, parts: [] });
+      return copy;
+    });
+  }, []);
 
   const overallPct = useMemo(() => {
     const subsArray = Object.values(subs);
@@ -141,34 +123,42 @@ const App: React.FC = () => {
   }, [subs]);
 
   const allComplete = useMemo(() => {
-    const everySubComplete = Object.values(subs).every((s) =>
-      s.items.every((i) => i.techDone && i.siteVerified),
-    );
+    const everySubComplete = Object.values(subs).every((s) => s.items.every((i) => i.techDone && i.siteVerified));
     return everySubComplete;
   }, [subs]);
 
+  // ---------------- PDF EXPORT ----------------
   const exportPDF = useCallback(async () => {
     if (!containerRef.current) return;
+
+    // Keep timestamp fresh
     setDateStr(new Date().toLocaleString());
+
     const node = containerRef.current;
     const canvas = await html2canvas(node, { scale: 2, backgroundColor: "#ffffff" });
     const imgData = canvas.toDataURL("image/png");
+
     const pdf = new jsPDF({ orientation: "p", unit: "pt", format: "a4" });
     const pageWidth = pdf.internal.pageSize.getWidth();
     const pageHeight = pdf.internal.pageSize.getHeight();
-    const margin = 18;
+
+    const margin = 18; // pt
     const imgWidth = pageWidth - margin * 2;
     const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
     if (imgHeight <= pageHeight - margin * 2) {
       pdf.addImage(imgData, "PNG", margin, margin, imgWidth, imgHeight);
     } else {
+      // slice into multiple pages
       let sY = 0;
       const ratio = imgWidth / canvas.width;
       const usableHeight = pageHeight - margin * 2;
+
       const pageCanvas = document.createElement("canvas");
       const pageCtx = pageCanvas.getContext("2d");
       pageCanvas.width = canvas.width;
       pageCanvas.height = Math.floor(usableHeight / ratio);
+
       while (sY < canvas.height) {
         const sliceHeight = Math.min(pageCanvas.height, canvas.height - sY);
         pageCtx!.clearRect(0, 0, pageCanvas.width, pageCanvas.height);
@@ -181,7 +171,7 @@ const App: React.FC = () => {
           0,
           0,
           pageCanvas.width,
-          sliceHeight,
+          sliceHeight
         );
         const sliceData = pageCanvas.toDataURL("image/png");
         if (sY > 0) pdf.addPage();
@@ -189,12 +179,14 @@ const App: React.FC = () => {
         sY += sliceHeight;
       }
     }
+
     pdf.save(`PBE-Sub-Repair-${new Date().toISOString().slice(0, 10)}.pdf`);
   }, []);
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-white to-gray-100">
       <div className="max-w-7xl mx-auto px-4 py-6" ref={containerRef}>
+        {/* Header */}
         <div className="flex items-center justify-between bg-white rounded-2xl p-4 shadow mb-6 border border-zinc-200">
           <div className="flex items-center gap-4">
             <div className="h-12 w-12 rounded-xl flex items-center justify-center" style={{ backgroundColor: PBE_GREEN }}>
@@ -206,17 +198,20 @@ const App: React.FC = () => {
               <div className="text-[11px] text-zinc-500">Site: {siteName} • {dateStr}</div>
             </div>
           </div>
+
           <div className="flex items-center gap-2">
             <Button
               onClick={exportPDF}
               disabled={!allComplete}
               className={`rounded-xl ${allComplete ? "bg-green-600 hover:bg-green-700" : "bg-gray-200 text-gray-500"}`}
-              title={allComplete ? "Send completed report as PDF" : "Complete all items (Tech + Verify) to enable PDF"}
+              title={allComplete ? "Export completed report as PDF" : "Complete all items (Tech + Verify) to enable PDF"}
             >
-              <FileDown className="mr-2 h-4 w-4" /> Send PDF Report
+              <FileDown className="mr-2 h-4 w-4" /> Export PDF
             </Button>
           </div>
         </div>
+
+        {/* Overall progress */}
         <Card className="mb-6 border-zinc-200">
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
@@ -231,12 +226,15 @@ const App: React.FC = () => {
             </div>
           </CardContent>
         </Card>
+
+        {/* Tabs per Sub */}
         <Tabs defaultValue="CSS092">
           <TabsList className="bg-white text-zinc-700 mb-4 border border-zinc-200 rounded-xl">
             <TabsTrigger value="CSS092">CSS092</TabsTrigger>
             <TabsTrigger value="CSS068">CSS068</TabsTrigger>
             <TabsTrigger value="CSS023">CSS023</TabsTrigger>
           </TabsList>
+
           {(["CSS092", "CSS068", "CSS023"] as SubAssetKey[]).map((key) => {
             const sub = subs[key];
             const pct = subProgress(sub);
@@ -246,76 +244,44 @@ const App: React.FC = () => {
                   <CardHeader className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                     <div>
                       <CardTitle>{sub.name}</CardTitle>
-                      <div className="text-xs text-zinc-500">
-                        Mark items as completed, then request Site Verification for each before final sign-off.
-                      </div>
+                      <div className="text-xs text-zinc-500">Mark items as completed, then request Site Verification for each before final sign-off.</div>
                     </div>
                     <div className="flex items-center gap-3 bg-white rounded-xl px-3 py-2 border border-zinc-200">
                       <div className="text-xs text-zinc-600">{pct}%</div>
                       <Progress value={pct} className="w-40" />
                     </div>
                   </CardHeader>
+
                   <CardContent>
                     {sub.items.map((it) => (
-                      <div
-                        key={it.id}
-                        className={`grid grid-cols-12 gap-4 p-4 rounded-xl border ${
-                          it.techDone && it.siteVerified ? "border-green-500 bg-green-50" : "border-zinc-200 bg-white"
-                        }`}
-                      >
+                      <div key={it.id} className={`grid grid-cols-12 gap-4 p-4 rounded-xl border ${it.techDone && it.siteVerified ? "border-green-500 bg-green-50" : "border-zinc-200 bg-white"}`}>
                         <div className="col-span-12 lg:col-span-6">
                           <div className="text-sm font-medium flex items-center gap-2">
                             <Wrench className="h-4 w-4" /> {it.title}
                           </div>
-                          <Textarea
-                            className="mt-2"
-                            placeholder="Notes / anomaly details"
-                            value={it.notes || ""}
-                            onChange={(e) => updateItem(key, it.id, { notes: e.target.value })}
-                          />
+                          <Textarea className="mt-2" placeholder="Notes / anomaly details" value={it.notes || ""} onChange={(e) => updateItem(key, it.id, { notes: e.target.value })} />
                         </div>
                         <div className="col-span-12 lg:col-span-3 flex flex-col gap-2">
                           <div className="text-xs font-medium">Technician action</div>
-                          <Button
-                            onClick={() => updateItem(key, it.id, { techDone: !it.techDone })}
-                            className={`w-full ${
-                              it.techDone ? "bg-green-600 hover:bg-green-700" : "bg-red-600 hover:bg-red-700 text-white"
-                            }`}
-                          >
+                          <Button onClick={() => updateItem(key, it.id, { techDone: !it.techDone })} className={`w-full ${it.techDone ? "bg-green-600 hover:bg-green-700" : "bg-red-600 hover:bg-red-700 text-white"}`}>
                             {it.techDone ? <CheckCircle2 className="mr-2 h-4 w-4" /> : <ClipboardCheck className="mr-2 h-4 w-4" />}
                             {it.techDone ? "Marked Done" : "Mark Done"}
                           </Button>
                           <label className="text-xs text-zinc-500">Technician Name</label>
-                          <Input
-                            value={it.techName || ""}
-                            onChange={(e) => updateItem(key, it.id, { techName: e.target.value })}
-                            placeholder="Type full name of person who completed work"
-                          />
+                          <Input value={it.techName || ""} onChange={(e) => updateItem(key, it.id, { techName: e.target.value })} placeholder="Type full name of person who completed work" />
                         </div>
                         <div className="col-span-12 lg:col-span-3 flex flex-col gap-2">
                           <div className="text-xs font-medium">Site verification</div>
-                          <Button
-                            onClick={() => updateItem(key, it.id, { siteVerified: !it.siteVerified })}
-                            disabled={!it.techDone}
-                            className={`w-full ${
-                              it.siteVerified
-                                ? "bg-green-600 text-white hover:bg-green-700"
-                                : "bg-white border border-red-300 text-red-700 hover:bg-red-50"
-                            }`}
-                          >
+                          <Button onClick={() => updateItem(key, it.id, { siteVerified: !it.siteVerified })} disabled={!it.techDone} className={`w-full ${it.siteVerified ? "bg-green-600 text-white hover:bg-green-700" : "bg-white border border-red-300 text-red-700 hover:bg-red-50"}`}>
                             {it.siteVerified ? "Verified" : "Verify (after Tech)"}
                           </Button>
                           <label className="text-xs text-zinc-500">Checked By (Site)</label>
-                          <Input
-                            value={it.siteChecker || ""}
-                            onChange={(e) => updateItem(key, it.id, { siteChecker: e.target.value })}
-                            placeholder="Type full name of site verifier"
-                          />
+                          <Input value={it.siteChecker || ""} onChange={(e) => updateItem(key, it.id, { siteChecker: e.target.value })} placeholder="Type full name of site verifier" />
                         </div>
                       </div>
                     ))}
                     <div className="mt-4">
-                      <Button onClick={() => addItem(key)} variant="outline" className="rounded-xl">
+                      <Button onClick={() => addItem(key)} className="rounded-xl bg-white border border-zinc-200 hover:bg-gray-50 text-zinc-700">
                         <Plus className="h-4 w-4 mr-1" /> Add New Item
                       </Button>
                     </div>
@@ -325,9 +291,8 @@ const App: React.FC = () => {
             );
           })}
         </Tabs>
-        <div className="mt-8 text-center text-xs text-zinc-400">
-          © {new Date().getFullYear()} Pyott Boone Electronics – Sub Repair & Verification • CSS092 • CSS068 • CSS023
-        </div>
+
+        <div className="mt-8 text-center text-xs text-zinc-400">© {new Date().getFullYear()} Pyott Boone Electronics – Sub Repair & Verification • CSS092 • CSS068 • CSS023</div>
       </div>
     </div>
   );
